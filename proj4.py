@@ -17,52 +17,77 @@ import numpy as np
 import math
 import torch
 from matplotlib import pyplot as plt
+import torch.nn as nn
 
+train_n = 50
 # Implementing manual gaussian process regression
 # We wish to find the hyper parameters of the Gaussian process
 
-train_x = torch.linspace(0, 1, 100)
+train_x = torch.linspace(0, 1,train_n)
 # True function is sin(2*pi*x) with Gaussian noise
 train_y = torch.sin(train_x * (2 * math.pi)) + torch.randn(train_x.size()) * math.sqrt(0.04)
+# Center data
 train_y =  train_y-torch.mean(train_y)
 
-def transforml(par):
-    return torch.log(1+torch.exp(par))
+#def transforml(par):
+#    #return torch.log(1+torch.exp(par))
+#    # We use the sigmoid function
+#    return(torch.nn.Sigmoid(par))
+
+def transforml(x):
+    return 1/(1+torch.exp(-x))
+
+    
 def transforms(par):
     return torch.log(1+torch.exp(par))+0.001
 
 # Our loss function will be the likelihood.
 
-
-w_est = torch.tensor([1,1.0],requires_grad=True)
-
+# Starting point
+w_est = torch.tensor([0.3,1.4],requires_grad=True)
+#testw = torch.tensor([0.3,1.4])
+#w_est = torch.tensor([0.3,1.4])
 def Kmat(x):
     sz = x.size(dim=0)
     t1 = torch.cat((x, x.repeat(sz-1))).reshape(sz,sz)
     t2 = t1-t1.transpose(0,1)
     lscale = transforml(w_est[0])
-    t3 = -lscale*torch.square(t2)
+    t3 = -1.0/(2*lscale**2)*torch.square(t2)
     t4 = torch.exp(t3)
     return t4
 
 def loglik(X,y,K):
     sz =X.size(dim=0)
     sigma = transforms(w_est[1])
-    L = torch.linalg.cholesky(K+sigma*torch.eye(sz))
-    l1 = torch.triangular_solve(torch.unsqueeze(y,1),L)
-    alpha = torch.triangular_solve(l1.solution,torch.transpose(L,0,1))
+    L = torch.linalg.cholesky(K+(sigma**2)*torch.eye(sz))
+    l1 = torch.triangular_solve(torch.unsqueeze(y,1),L,upper=False)
+    #print(l1)
+    alpha = torch.triangular_solve(l1.solution,torch.transpose(L,0,1),upper=True)
+    #print(alpha)
+    #print(-0.5*torch.dot(y,torch.squeeze(alpha.solution)))
     return -0.5*torch.dot(y,torch.squeeze(alpha.solution))-torch.log(torch.diagonal(L)).sum()
-    
+    #return torch.log(torch.diagonal(L)).sum()
+
+# We now try to calculate the log likelihood manually
+'''
+K = Kmat(train_x)
+K_sI_inv = torch.inverse(K+(transforms(testw[1])**2)*torch.eye(train_n))
+determ = torch.det(K+(transforms(testw[1])**2)*torch.eye(train_n))
+first = -0.5*torch.dot(train_y,torch.matmul(K_sI_inv,train_y))
+second = -0.5*torch.log(determ)
+first+second
+
+ass = loglik(train_x,train_y,K)
 # We try by first implementing 
 
 
 
 #loglik(train_x,train_y)
-
-n_iters = 1000
+'''
+n_iters = 500
 learning_rate = 0.1
 optimizer = torch.optim.Adam([w_est],lr=learning_rate)
-#optimizer = torch.optim.SGD([w_est],lr=learning_rate)
+
 for epoch in range(n_iters):
     #y_pred = forward(train_x)
     
@@ -97,18 +122,18 @@ def Kmat2(x1,x2):
     t4 = torch.exp(t3)
     return t4
 
-w_est = torch.tensor([1,1])
+#w_est = torch.tensor([1,1])
 test_x = torch.linspace(0, 1, 51)
 kmat2 = Kmat2(test_x,train_x)
 
 sz = train_x.size(dim=0)
 K = Kmat(train_x)
 L = torch.linalg.cholesky(K+(transforms(w_est[1])**2)*torch.eye(sz))
-l1 = torch.triangular_solve(torch.unsqueeze(train_y,1),L)
+l1 = torch.triangular_solve(torch.unsqueeze(train_y,1),L,upper=False)
 alpha = torch.triangular_solve(l1.solution,torch.transpose(L,0,1))
 
 
-Wf_pred = torch.matmul(kmat2,alpha.solution)
+f_pred = torch.matmul(kmat2,alpha.solution)
 #f_pred1 = torch.matmul(torch.inverse(K+(transforms(w_est[1])**2)*torch.eye(sz)),train_y)
 #f_pred = torch.matmul(kmat2,f_pred1)
 #w_est = torch.tensor()
